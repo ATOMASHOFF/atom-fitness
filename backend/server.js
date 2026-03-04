@@ -1,3 +1,29 @@
+// Start server
+const server = app.listen(PORT, '0.0.0.0', () => {
+  console.log('=================================');
+  console.log(`✅ Server running on port ${PORT}`);
+  console.log(`   Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`   Time: ${new Date().toISOString()}`);
+  console.log('=================================');
+  console.log('Available routes:');
+  console.log('  GET  /');
+  console.log('  GET  /api/health');
+  console.log('  POST /api/auth/login');
+  console.log('=================================');
+});
+
+server.on('error', (err) => {
+  console.error('❌ Server error:', err);
+  process.exit(1);
+});
+
+server.on('listening', () => {
+  const addr = server.address();
+  console.log(`✅ Server is listening on ${addr.address}:${addr.port}`);
+});
+
+
+
 const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
