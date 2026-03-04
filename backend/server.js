@@ -1,23 +1,9 @@
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 require('dotenv').config();
 
-const app = express();
-
-// CORS Configuration - IMPORTANT for production
-const corsOptions = {
-  origin: [
-    'http://localhost:3000',
-    'https://atom-fitness-app.onrender.com',  // ← Your frontend URL
-    /\.onrender\.com$/  // Allow all Render subdomains
-  ],
-  credentials: true,
-  optionsSuccessStatus: 200
-};
-
-app.use(cors(corsOptions));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+const { testConnection } = require('./config/database');
 
 
 // Import routes
