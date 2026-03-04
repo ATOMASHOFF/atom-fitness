@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: 'https://unkidnaped-janine-addictively.ngrok-free.dev/api',
+  baseURL: 'https://atom-fitness-api.onrender.com/api',
   timeout: 10000,
   headers: { 'Content-Type': 'application/json' }
 });
