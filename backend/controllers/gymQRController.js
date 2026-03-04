@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 const QRCode = require('qrcode');
-const { pool } = require('../config/database');
+const { pool } = require('../src/config/database');
 
 // Generate or get gym's static QR code
 const getGymQR = async (req, res) => {

@@ -28,3 +28,10 @@ Thumbs.db
 # Ngrok
 ngrok.yml
 *.ngrok.yml
+
+node_modules/
+.env
+dist/
+build/
+.cache/
+coverage/

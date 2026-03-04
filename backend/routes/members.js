@@ -2,8 +2,8 @@ const express = require('express');
 const router = express.Router();
 const {
   getAllMembers, getMemberById, createMember, updateMember, deleteMember, getDashboardStats
-} = require('../controllers/memberController');
-const { authenticateToken, requireAdmin } = require('../middleware/auth');
+} = require('../src/controllers/memberController');
+const { authenticateToken, requireAdmin } = require('../src/middleware/auth');
 
 // Admin only
 router.get('/dashboard', authenticateToken, requireAdmin, getDashboardStats);

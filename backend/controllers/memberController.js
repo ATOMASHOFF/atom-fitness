@@ -1,5 +1,5 @@
 const bcrypt = require('bcryptjs');
-const { pool } = require('../config/database');
+const { pool } = require('../src/config/database');
 
 // Get all members (admin only)
 const getAllMembers = async (req, res) => {

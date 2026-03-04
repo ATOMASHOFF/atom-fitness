@@ -1,5 +1,5 @@
 const bcrypt = require('bcryptjs');
-const { pool } = require('../config/database');
+const { pool } = require('../src/config/database');
 const { generateToken } = require('../middleware/auth');
 
 // Login - works for both admin and member
