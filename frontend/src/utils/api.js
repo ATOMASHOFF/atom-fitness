@@ -1,12 +1,14 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: 'https://atom-fitness-api.onrender.com/api',
+  baseURL: process.env.REACT_APP_API_URL || 'https://atom-fitness.onrender.com/api',
   timeout: 10000,
-  headers: { 'Content-Type': 'application/json' }
+  headers: { 
+    'Content-Type': 'application/json'
+  }
 });
 
-// Request interceptor - attach JWT
+// Add token to requests
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
@@ -15,10 +17,12 @@ api.interceptors.request.use(
     }
     return config;
   },
-  (error) => Promise.reject(error)
+  (error) => {
+    return Promise.reject(error);
+  }
 );
 
-// Response interceptor - handle 401
+// Handle 401 errors
 api.interceptors.response.use(
   (response) => response,
   (error) => {
