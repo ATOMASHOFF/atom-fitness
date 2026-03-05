@@ -3,11 +3,10 @@ const { pool } = require('../config/database');
 require('dotenv').config();
 
 const seedDatabase = async () => {
+  const client = await pool.connect();
+  
   try {
     console.log('🌱 Starting seed process...');
-    
-    const client = await pool.connect();
-    console.log('✅ Connected to PostgreSQL database');
 
     // Check if admin already exists
     const existingAdmin = await client.query(
@@ -16,35 +15,36 @@ const seedDatabase = async () => {
     );
 
     if (existingAdmin.rows.length > 0) {
-      console.log('⚠️  Admin account already exists:', existingAdmin.rows[0].email);
-    } else {
-      // Hash admin password
-      const hashedPassword = await bcrypt.hash(
-        process.env.ADMIN_PASSWORD || 'Admin@123',
-        12
-      );
-
-      // Create admin account
-      await client.query(
-        `INSERT INTO members (name, email, password_hash, role, is_active)
-         VALUES ($1, $2, $3, 'admin', true)`,
-        [
-          process.env.ADMIN_NAME || 'Super Admin',
-          process.env.ADMIN_EMAIL || 'admin@atomfitness.com',
-          hashedPassword
-        ]
-      );
-
-      console.log('✅ Admin account created:', process.env.ADMIN_EMAIL || 'admin@atomfitness.com');
+      console.log('⚠️  Admin account already exists');
+      client.release();
+      await pool.end(); // Close pool
+      process.exit(0); // Exit cleanly
+      return;
     }
 
-    // Check membership plans
-    const plans = await client.query('SELECT * FROM membership_plans');
-    console.log(`✅ Membership plans: ${plans.rows.length} plans found`);
+    // Hash admin password
+    const hashedPassword = await bcrypt.hash(
+      process.env.ADMIN_PASSWORD || 'Admin@123',
+      12
+    );
 
+    // Create admin account
+    await client.query(
+      `INSERT INTO members (name, email, password_hash, role, is_active)
+       VALUES ($1, $2, $3, 'admin', true)`,
+      [
+        process.env.ADMIN_NAME || 'Super Admin',
+        process.env.ADMIN_EMAIL || 'admin@atomfitness.com',
+        hashedPassword
+      ]
+    );
+
+    console.log('✅ Admin account created');
+
+    // Check and create plans if needed
+    const plans = await client.query('SELECT * FROM membership_plans');
+    
     if (plans.rows.length === 0) {
-      console.log('⚠️  No membership plans found. Creating default plans...');
-      
       const defaultPlans = [
         { name: 'Monthly', duration: 30, price: 2000, description: 'Perfect for trying out the gym' },
         { name: 'Quarterly', duration: 90, price: 5500, description: 'Save 8% with quarterly plan' },
@@ -59,20 +59,20 @@ const seedDatabase = async () => {
           [plan.name, plan.duration, plan.price, plan.description]
         );
       }
-      
-      console.log('✅ Created 4 default membership plans');
+      console.log('✅ Created default plans');
     }
 
     client.release();
-    console.log('🎉 Seed complete! Starting server...');
-    // Don't exit - let the script continue to server.js
+    await pool.end(); // Important: Close pool connection
+    console.log('🎉 Seed complete!');
+    process.exit(0); // Exit cleanly
 
   } catch (err) {
     console.error('❌ Seed error:', err);
-    console.log('⚠️  Continuing to start server anyway...');
-    // Don't exit on error - server can still start
+    client.release();
+    await pool.end();
+    process.exit(1); // Exit with error
   }
 };
 
-// Run seed and export
 seedDatabase();
