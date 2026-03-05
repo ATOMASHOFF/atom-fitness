@@ -75,7 +75,7 @@ const getMemberById = async (req, res) => {
 
     const result = await pool.query(
       `SELECT m.id, m.name, m.email, m.phone, m.gender, m.date_of_birth,
-              m.address, m.emergency_contact, m.emergency_phone, m.profile_notes,
+              m.address, m.emergency_contact, m.emergency_phone, m.notes,
               m.is_active, m.created_at
        FROM members m
        WHERE m.id = $1 AND m.role = 'member'`,
@@ -117,39 +117,41 @@ const getMemberById = async (req, res) => {
 // Create new member (admin only)
 const createMember = async (req, res) => {
   try {
-    const {
-      name, email, phone, password, gender,
-      date_of_birth, address, emergency_contact, emergency_phone, profile_notes
-    } = req.body;
+    const { name, email, phone, gender, date_of_birth, address, emergency_contact, emergency_phone, notes } = req.body;
 
-    if (!name || !email || !password) {
-      return res.status(400).json({ success: false, message: 'Name, email and password are required' });
+    // Validate required fields
+    if (!name || !email) {
+      return res.status(400).json({ success: false, message: 'Name and email are required' });
     }
 
-    // Check if email exists
+    // Check if email already exists
     const existing = await pool.query('SELECT id FROM members WHERE email = $1', [email.toLowerCase().trim()]);
     if (existing.rows.length > 0) {
-      return res.status(409).json({ success: false, message: 'Email already registered' });
+      return res.status(400).json({ success: false, message: 'Email already exists' });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 12);
+    // Generate default password: first name + last 4 digits of phone or "1234"
+    const defaultPassword = phone ? `${name.split(' ')[0]}${phone.slice(-4)}` : `${name.split(' ')[0]}1234`;
+    const hashedPassword = await bcrypt.hash(defaultPassword, 12);
 
     const result = await pool.query(
-      `INSERT INTO members (name, email, phone, password_hash, role, gender, date_of_birth, address, emergency_contact, emergency_phone, profile_notes)
-       VALUES ($1, $2, $3, $4, 'member', $5, $6, $7, $8, $9, $10)
-       RETURNING id, name, email, phone, gender, date_of_birth, address, is_active, created_at`,
-      [name.trim(), email.toLowerCase().trim(), phone, hashedPassword, gender, date_of_birth || null,
-       address, emergency_contact, emergency_phone, profile_notes]
+      `INSERT INTO members (name, email, phone, password_hash, role, gender, date_of_birth, 
+        address, emergency_contact, emergency_phone, notes, is_active)
+       VALUES ($1, $2, $3, $4, 'member', $5, $6, $7, $8, $9, $10, true)
+       RETURNING id, name, email, phone, role, is_active, created_at`,
+      [name, email.toLowerCase().trim(), phone, hashedPassword, gender, date_of_birth, 
+       address, emergency_contact, emergency_phone, notes]
     );
 
     res.status(201).json({
       success: true,
-      message: 'Member created successfully',
-      member: result.rows[0]
+      message: `Member created successfully. Default password: ${defaultPassword}`,
+      member: result.rows[0],
+      defaultPassword: defaultPassword
     });
   } catch (err) {
     console.error('Create member error:', err);
-    res.status(500).json({ success: false, message: 'Server error' });
+    res.status(500).json({ success: false, message: 'Server error creating member', error: err.message });
   }
 };
 
@@ -157,7 +159,7 @@ const createMember = async (req, res) => {
 const updateMember = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, phone, gender, date_of_birth, address, emergency_contact, emergency_phone, profile_notes, is_active } = req.body;
+    const { name, phone, gender, date_of_birth, address, emergency_contact, emergency_phone, notes, is_active } = req.body;
 
     const result = await pool.query(
       `UPDATE members SET 
@@ -168,25 +170,26 @@ const updateMember = async (req, res) => {
         address = COALESCE($5, address),
         emergency_contact = COALESCE($6, emergency_contact),
         emergency_phone = COALESCE($7, emergency_phone),
-        profile_notes = COALESCE($8, profile_notes),
-        is_active = COALESCE($9, is_active)
+        notes = COALESCE($8, notes),
+        is_active = COALESCE($9, is_active),
+        updated_at = CURRENT_TIMESTAMP
        WHERE id = $10 AND role = 'member'
        RETURNING id, name, email, phone, gender, is_active, updated_at`,
-      [name, phone, gender, date_of_birth || null, address, emergency_contact, emergency_phone, profile_notes, is_active, id]
+      [name, phone, gender, date_of_birth || null, address, emergency_contact, emergency_phone, notes, is_active, id]
     );
 
     if (result.rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Member not found' });
     }
 
-    res.json({ success: true, message: 'Member updated', member: result.rows[0] });
+    res.json({ success: true, message: 'Member updated successfully', member: result.rows[0] });
   } catch (err) {
     console.error('Update member error:', err);
     res.status(500).json({ success: false, message: 'Server error' });
   }
 };
 
-// Delete member (admin only)
+// Delete member (admin only - soft delete)
 const deleteMember = async (req, res) => {
   try {
     const { id } = req.params;
@@ -276,4 +279,11 @@ const getDashboardStats = async (req, res) => {
   }
 };
 
-module.exports = { getAllMembers, getMemberById, createMember, updateMember, deleteMember, getDashboardStats };
+module.exports = { 
+  getAllMembers, 
+  getMemberById, 
+  createMember, 
+  updateMember, 
+  deleteMember, 
+  getDashboardStats 
+};
