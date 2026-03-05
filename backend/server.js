@@ -96,3 +96,30 @@ server.on('listening', () => {
   const addr = server.address();
   console.log(`✅ Server is listening on ${addr.address}:${addr.port}`);
 });
+
+
+// TEMPORARY - Create admin endpoint
+app.post('/api/create-admin', async (req, res) => {
+  try {
+    const bcrypt = require('bcryptjs');
+    const { pool } = require('./config/database');
+    
+    const password = 'Admin@123';
+    const hashedPassword = await bcrypt.hash(password, 12);
+    
+    // Delete existing
+    await pool.query("DELETE FROM members WHERE email = 'admin@atomfitness.com'");
+    
+    // Create new
+    const result = await pool.query(
+      `INSERT INTO members (name, email, password_hash, role, is_active)
+       VALUES ($1, $2, $3, $4, $5) RETURNING id, email, role`,
+      ['Super Admin', 'admin@atomfitness.com', hashedPassword, 'admin', true]
+    );
+    
+    res.json({ success: true, admin: result.rows[0], hash: hashedPassword });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
