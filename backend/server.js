@@ -73,6 +73,41 @@ app.use((err, req, res, next) => {
   });
 });
 
+// TEMPORARY - Create admin endpoint (ADD THIS BEFORE app.listen)
+app.post('/api/create-admin', async (req, res) => {
+  try {
+    const bcrypt = require('bcryptjs');
+    
+    const password = 'Admin@123';
+    const hashedPassword = await bcrypt.hash(password, 12);
+    
+    console.log('Creating admin with hash:', hashedPassword);
+    
+    // Delete existing
+    await pool.query("DELETE FROM members WHERE email ILIKE '%admin%'");
+    
+    // Create new
+    const result = await pool.query(
+      `INSERT INTO members (name, email, password_hash, role, is_active)
+       VALUES ($1, $2, $3, $4, $5) RETURNING id, email, role`,
+      ['Super Admin', 'admin@atomfitness.com', hashedPassword, 'admin', true]
+    );
+    
+    console.log('Admin created:', result.rows[0]);
+    
+    res.json({ 
+      success: true, 
+      message: 'Admin created',
+      admin: result.rows[0], 
+      hash_length: hashedPassword.length 
+    });
+  } catch (err) {
+    console.error('Create admin error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+
 // Start server (THIS MUST BE AT THE END!)
 const server = app.listen(PORT, '0.0.0.0', () => {
   console.log('=================================');
@@ -98,28 +133,3 @@ server.on('listening', () => {
 });
 
 
-// TEMPORARY - Create admin endpoint
-app.post('/api/create-admin', async (req, res) => {
-  try {
-    const bcrypt = require('bcryptjs');
-    const { pool } = require('./config/database');
-    
-    const password = 'Admin@123';
-    const hashedPassword = await bcrypt.hash(password, 12);
-    
-    // Delete existing
-    await pool.query("DELETE FROM members WHERE email = 'admin@atomfitness.com'");
-    
-    // Create new
-    const result = await pool.query(
-      `INSERT INTO members (name, email, password_hash, role, is_active)
-       VALUES ($1, $2, $3, $4, $5) RETURNING id, email, role`,
-      ['Super Admin', 'admin@atomfitness.com', hashedPassword, 'admin', true]
-    );
-    
-    res.json({ success: true, admin: result.rows[0], hash: hashedPassword });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
