@@ -1,18 +1,24 @@
 {
   "name": "atom-fitness-backend",
   "version": "1.0.0",
+  "description": "ATOM FITNESS Gym Management API - Multi-tenant with RBAC",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "postinstall": "node utils/seed.js || true"
+    "dev": "nodemon server.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.0.3",
     "express": "^4.18.2",
+    "express-rate-limit": "^7.1.5",
+    "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
     "pg": "^8.11.0",
     "qrcode": "^1.5.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
