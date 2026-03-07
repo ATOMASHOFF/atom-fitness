@@ -76,7 +76,7 @@ app.get('/api/health', (req, res) => {
 
 // Test database connection
 const { testConnection } = require('./config/database');
-testConnection();
+
 
 // Import and mount routes
 try {
