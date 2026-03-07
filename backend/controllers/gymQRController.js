@@ -1,98 +1,100 @@
-const crypto = require('crypto');
-const QRCode = require('qrcode');
 const { pool } = require('../config/database');
+const QRCode = require('qrcode');
+const crypto = require('crypto');
 
-// Generate or get gym's static QR code
+// Get gym's QR code (admin only)
 const getGymQR = async (req, res) => {
   try {
-    // Check if gym QR already exists
-    let result = await pool.query(
-      "SELECT * FROM gym_qr_codes WHERE is_active = true ORDER BY created_at DESC LIMIT 1"
+    const gym_id = req.user.gym_id;
+
+    // Check if gym QR exists
+    const result = await pool.query(
+      'SELECT * FROM gym_qr_codes WHERE gym_id = $1 AND is_active = true LIMIT 1',
+      [gym_id]
     );
 
-    let gymQR;
+    let qrCode;
     
     if (result.rows.length === 0) {
-      // Create new gym QR code
+      // Generate new QR code
       const token = crypto.randomBytes(32).toString('hex');
-      const qrPayload = JSON.stringify({ 
+      const qrData = JSON.stringify({
         type: 'GYM_CHECKIN',
         token: token,
-        gym: 'ATOM FITNESS'
+        gym_id: gym_id,
+        gym: req.gym?.name || 'GYM'
       });
-      
-      const qrImageData = await QRCode.toDataURL(qrPayload, {
+
+      const qrImageData = await QRCode.toDataURL(qrData, {
         errorCorrectionLevel: 'M',
         type: 'image/png',
-        quality: 0.92,
-        margin: 2,
-        color: { dark: '#ff3d00', light: '#FFFFFF' },
-        width: 400
+        width: 400,
+        color: { dark: '#ff3d00', light: '#ffffff' }
       });
 
       const insertResult = await pool.query(
-        `INSERT INTO gym_qr_codes (token, qr_image_data, location) 
-         VALUES ($1, $2, 'Main Entrance') RETURNING *`,
-        [token, qrImageData]
+        `INSERT INTO gym_qr_codes (token, qr_image_data, gym_id, location, is_active)
+         VALUES ($1, $2, $3, 'Main Entrance', true)
+         RETURNING *`,
+        [token, qrImageData, gym_id]
       );
-      
-      gymQR = insertResult.rows[0];
+
+      qrCode = insertResult.rows[0];
     } else {
-      gymQR = result.rows[0];
+      qrCode = result.rows[0];
     }
 
-    res.json({ success: true, gymQR });
+    res.json({ success: true, qrCode });
+    
   } catch (err) {
     console.error('Get gym QR error:', err);
     res.status(500).json({ success: false, message: 'Server error' });
   }
 };
 
-// Regenerate gym QR (invalidates old one)
+// Regenerate gym QR code (admin only)
 const regenerateGymQR = async (req, res) => {
-  const client = await pool.connect();
   try {
-    await client.query('BEGIN');
+    const gym_id = req.user.gym_id;
 
-    // Deactivate all old QR codes
-    await client.query("UPDATE gym_qr_codes SET is_active = false");
-
-    // Create new QR
-    const token = crypto.randomBytes(32).toString('hex');
-    const qrPayload = JSON.stringify({ 
-      type: 'GYM_CHECKIN',
-      token: token,
-      gym: 'ATOM FITNESS'
-    });
-    
-    const qrImageData = await QRCode.toDataURL(qrPayload, {
-      errorCorrectionLevel: 'M',
-      type: 'image/png',
-      quality: 0.92,
-      margin: 2,
-      color: { dark: '#ff3d00', light: '#FFFFFF' },
-      width: 400
-    });
-
-    const result = await client.query(
-      `INSERT INTO gym_qr_codes (token, qr_image_data, location) 
-       VALUES ($1, $2, $3) RETURNING *`,
-      [token, qrImageData, req.body.location || 'Main Entrance']
+    // Deactivate old QR codes for this gym
+    await pool.query(
+      'UPDATE gym_qr_codes SET is_active = false WHERE gym_id = $1',
+      [gym_id]
     );
 
-    await client.query('COMMIT');
+    // Generate new QR code
+    const token = crypto.randomBytes(32).toString('hex');
+    const qrData = JSON.stringify({
+      type: 'GYM_CHECKIN',
+      token: token,
+      gym_id: gym_id,
+      gym: req.gym?.name || 'GYM'
+    });
+
+    const qrImageData = await QRCode.toDataURL(qrData, {
+      errorCorrectionLevel: 'M',
+      type: 'image/png',
+      width: 400,
+      color: { dark: '#ff3d00', light: '#ffffff' }
+    });
+
+    const result = await pool.query(
+      `INSERT INTO gym_qr_codes (token, qr_image_data, gym_id, location, is_active)
+       VALUES ($1, $2, $3, 'Main Entrance', true)
+       RETURNING *`,
+      [token, qrImageData, gym_id]
+    );
 
     res.json({ 
       success: true, 
-      message: 'Gym QR code regenerated', 
-      gymQR: result.rows[0] 
+      message: 'QR code regenerated successfully',
+      qrCode: result.rows[0] 
     });
+    
   } catch (err) {
-    await client.query('ROLLBACK');
     console.error('Regenerate gym QR error:', err);
     res.status(500).json({ success: false, message: 'Server error' });
-  } finally {
-    client.release();
   }
 };
 

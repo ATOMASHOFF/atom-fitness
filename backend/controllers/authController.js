@@ -14,11 +14,17 @@ const login = async (req, res) => {
       });
     }
 
-    // Find member by email
-    const result = await pool.query(
-      'SELECT * FROM members WHERE email = $1 AND is_active = true',
-      [email.toLowerCase().trim()]
-    );
+    // Find member by email and gym
+    let query = 'SELECT * FROM members WHERE email = $1 AND is_active = true';
+    const params = [email.toLowerCase().trim()];
+    
+    // If gym context exists, filter by gym
+    if (req.gym) {
+      query += ' AND gym_id = $2';
+      params.push(req.gym.id);
+    }
+    
+    const result = await pool.query(query, params);
 
     if (result.rows.length === 0) {
       return res.status(401).json({ 
@@ -38,26 +44,43 @@ const login = async (req, res) => {
       });
     }
 
-    // Generate JWT
+    // Get staff permissions if staff
+    let permissions = null;
+    if (member.role === 'staff') {
+      const permResult = await pool.query(
+        'SELECT * FROM staff_permissions WHERE staff_id = $1 AND gym_id = $2',
+        [member.id, member.gym_id]
+      );
+      permissions = permResult.rows[0] || null;
+    }
+
+    // Generate JWT with gym_id
     const token = generateToken({
       id: member.id,
       email: member.email,
       role: member.role,
-      name: member.name
+      name: member.name,
+      gym_id: member.gym_id
     });
 
-    // Return user data (exclude password)
+    // Return user data
     const { password_hash, ...userData } = member;
 
     res.json({
       success: true,
       message: 'Login successful',
       token,
-      user: userData
+      user: {
+        ...userData,
+        permissions
+      }
     });
   } catch (err) {
     console.error('Login error:', err);
-    res.status(500).json({ success: false, message: 'Server error during login' });
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error during login' 
+    });
   }
 };
 

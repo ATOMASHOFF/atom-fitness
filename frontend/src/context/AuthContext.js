@@ -30,12 +30,27 @@ export const AuthProvider = ({ children }) => {
   }, [loadUser]);
 
   const login = async (email, password) => {
-    const res = await api.post('/auth/login', { email, password });
-    const { token, user: userData } = res.data;
-    localStorage.setItem('token', token);
-    localStorage.setItem('user', JSON.stringify(userData));
-    setUser(userData);
-    return userData;
+    console.log('=== LOGIN ATTEMPT ===');
+    console.log('Email:', email);
+    console.log('API Base URL:', api.defaults.baseURL);
+    console.log('Environment variable:', process.env.REACT_APP_API_URL);
+
+    try {
+      const res = await api.post('/auth/login', { email, password });
+      console.log('✅ Login SUCCESS:', res.data);
+
+      const { token, user: userData } = res.data;
+      localStorage.setItem('token', token);
+      localStorage.setItem('user', JSON.stringify(userData));
+      setUser(userData);
+      return userData;
+    } catch (error) {
+      console.error('❌ LOGIN ERROR');
+      console.error('Error message:', error.message);
+      console.error('Response status:', error.response?.status);
+      console.error('Response data:', error.response?.data);
+      throw error;
+    }
   };
 
   const logout = () => {

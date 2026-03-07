@@ -1,15 +1,39 @@
 const express = require('express');
 const router = express.Router();
-const { scanGymQR, recordManualAttendance, getAttendanceLogs } = require('../controllers/attendanceController');
-const { authenticateToken, requireAdmin, requireMember } = require('../middleware/auth');
+const { 
+  scanGymQR, 
+  manualCheckIn, 
+  getAttendanceLogs 
+} = require('../controllers/attendanceController');
+const { 
+  authenticateToken, 
+  requireMember,
+  requireAdminOrStaff,
+  requirePermission 
+} = require('../middleware/auth');
 
-// Member scans gym QR to check in
-router.post('/checkin', authenticateToken, requireMember, scanGymQR);
+// Scan QR - members only
+router.post(
+  '/checkin', 
+  authenticateToken, 
+  requireMember, 
+  scanGymQR
+);
 
-// Manual attendance - admin only
-router.post('/manual', authenticateToken, requireAdmin, recordManualAttendance);
+// Manual check-in - admin and staff with can_scan_attendance
+router.post(
+  '/manual', 
+  authenticateToken,
+  requirePermission('can_scan_attendance'),
+  manualCheckIn
+);
 
-// Logs - admin sees all, member sees own
-router.get('/logs', authenticateToken, getAttendanceLogs);
+// Get attendance logs - admin and staff with can_view_attendance
+router.get(
+  '/logs', 
+  authenticateToken,
+  requireAdminOrStaff,
+  getAttendanceLogs
+);
 
 module.exports = router;

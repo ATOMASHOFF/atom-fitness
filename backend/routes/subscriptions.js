@@ -1,24 +1,47 @@
 const express = require('express');
 const router = express.Router();
-const {
-  getPlans, createPlan, updatePlan, deletePlan,
-  activateSubscription, getMemberQR, getMemberSubscriptions
+const { 
+  getAllSubscriptions, 
+  createSubscription, 
+  updateSubscription, 
+  deleteSubscription 
 } = require('../controllers/subscriptionController');
-const { authenticateToken, requireAdmin } = require('../middleware/auth');
+const { 
+  authenticateToken, 
+  requireAdmin,
+  requireAdminOrStaff,
+  requirePermission 
+} = require('../middleware/auth');
 
-// Plans - public read, admin write
-router.get('/plans', authenticateToken, getPlans);
-router.post('/plans', authenticateToken, requireAdmin, createPlan);
-router.put('/plans/:id', authenticateToken, requireAdmin, updatePlan);
-router.delete('/plans/:id', authenticateToken, requireAdmin, deletePlan);
+// All routes require authentication
+router.use(authenticateToken);
 
-// Subscriptions
-router.post('/activate', authenticateToken, requireAdmin, activateSubscription);
-router.get('/member/:id', authenticateToken, getMemberSubscriptions);
-router.get('/qr/:id', authenticateToken, getMemberQR);
+// Get all subscriptions - admin and staff with can_view_subscriptions
+router.get(
+  '/', 
+  requireAdminOrStaff,
+  getAllSubscriptions
+);
 
-// Own data for member
-router.get('/my/subscriptions', authenticateToken, getMemberSubscriptions);
-router.get('/my/qr', authenticateToken, getMemberQR);
+// Create subscription - admin and staff with can_add_subscriptions
+router.post(
+  '/', 
+  requirePermission('can_add_subscriptions'),
+  createSubscription
+);
+
+// Update subscription - admin only (staff cannot edit payments)
+router.put(
+  '/:id', 
+  requireAdmin,
+  updateSubscription
+);
+
+// Delete subscription - admin only
+router.delete(
+  '/:id', 
+  requireAdmin,
+  deleteSubscription
+);
 
 module.exports = router;

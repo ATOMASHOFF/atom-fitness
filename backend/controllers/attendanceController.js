@@ -1,223 +1,214 @@
 const { pool } = require('../config/database');
 
-// Member scans gym QR code to check in
+// Scan gym QR and check in (member)
 const scanGymQR = async (req, res) => {
-  const client = await pool.connect();
   try {
-    await client.query('BEGIN');
-
     const { token } = req.body;
-    const memberId = req.user.id; // From JWT
+    const member_id = req.user.id;
+    const gym_id = req.user.gym_id;
 
-    if (!token) {
-      return res.status(400).json({ success: false, message: 'QR token is required' });
-    }
-
-    // Verify this is a valid gym QR code
-    const gymQRResult = await client.query(
-      'SELECT * FROM gym_qr_codes WHERE token = $1 AND is_active = true',
-      [token]
+    // Verify gym QR code belongs to member's gym
+    const qrResult = await pool.query(
+      'SELECT * FROM gym_qr_codes WHERE token = $1 AND gym_id = $2 AND is_active = true',
+      [token, gym_id]
     );
 
-    if (gymQRResult.rows.length === 0) {
-      await client.query('ROLLBACK');
-      return res.status(404).json({ 
+    if (qrResult.rows.length === 0) {
+      return res.status(400).json({ 
         success: false, 
-        message: 'Invalid gym QR code',
-        status: 'INVALID'
+        status: 'INVALID',
+        message: 'Invalid QR code or wrong gym' 
       });
     }
 
-    // Get member details and active subscription
-    const memberResult = await client.query(
-      `SELECT m.id, m.name, m.email, m.is_active as member_active,
-              s.id as subscription_id, s.start_date, s.end_date, s.status as subscription_status,
-              p.name as plan_name
-       FROM members m
-       LEFT JOIN subscriptions s ON s.member_id = m.id AND s.status = 'active'
-       LEFT JOIN membership_plans p ON p.id = s.plan_id
-       WHERE m.id = $1`,
-      [memberId]
+    const gymQR = qrResult.rows[0];
+
+    // Check if member is active
+    const memberResult = await pool.query(
+      'SELECT * FROM members WHERE id = $1 AND gym_id = $2 AND is_active = true',
+      [member_id, gym_id]
     );
 
     if (memberResult.rows.length === 0) {
-      await client.query('ROLLBACK');
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Member not found',
-        status: 'INVALID'
-      });
-    }
-
-    const memberData = memberResult.rows[0];
-
-    // Check if member is active
-    if (!memberData.member_active) {
-      await client.query('ROLLBACK');
       return res.status(400).json({ 
         success: false, 
-        message: 'Your account is deactivated. Please contact the gym.',
-        status: 'MEMBER_INACTIVE'
+        status: 'MEMBER_INACTIVE',
+        message: 'Member account is inactive' 
       });
     }
 
-    // Check if member has active subscription
-    if (!memberData.subscription_id) {
-      await client.query('ROLLBACK');
+    // Check active subscription for this gym
+    const subResult = await pool.query(
+      `SELECT s.*, p.name as plan_name 
+       FROM subscriptions s
+       JOIN membership_plans p ON p.id = s.plan_id
+       WHERE s.member_id = $1 AND s.gym_id = $2
+         AND s.status = 'active' AND s.end_date >= CURRENT_DATE
+       ORDER BY s.end_date DESC
+       LIMIT 1`,
+      [member_id, gym_id]
+    );
+
+    if (subResult.rows.length === 0) {
       return res.status(400).json({ 
         success: false, 
-        message: 'No active membership. Please contact the gym to activate a plan.',
-        status: 'NO_SUBSCRIPTION'
+        status: 'NO_SUBSCRIPTION',
+        message: 'No active membership for this gym' 
       });
     }
 
-    // Check subscription expiry
-    const today = new Date();
-    const endDate = new Date(memberData.end_date);
-    
-    if (endDate < today) {
-      // Update subscription to expired
-      await client.query(
-        "UPDATE subscriptions SET status = 'expired' WHERE id = $1",
-        [memberData.subscription_id]
-      );
-      await client.query('ROLLBACK');
-      return res.status(400).json({ 
-        success: false, 
-        message: `Your membership expired on ${endDate.toLocaleDateString('en-IN')}. Please renew.`,
-        status: 'EXPIRED',
-        subscription: { end_date: memberData.end_date, plan_name: memberData.plan_name }
-      });
-    }
+    const subscription = subResult.rows[0];
 
-    // Check duplicate same-day attendance
-    const todayStr = today.toISOString().split('T')[0];
-    const duplicateCheck = await client.query(
-      'SELECT id, check_in_time FROM attendance_logs WHERE member_id = $1 AND check_in_date = $2',
-      [memberId, todayStr]
+    // Check for duplicate check-in today
+    const today = new Date().toISOString().split('T')[0];
+    const duplicateCheck = await pool.query(
+      `SELECT * FROM attendance_logs 
+       WHERE member_id = $1 AND gym_id = $2 AND check_in_date = $3`,
+      [member_id, gym_id, today]
     );
 
     if (duplicateCheck.rows.length > 0) {
-      await client.query('ROLLBACK');
-      const firstCheckin = new Date(duplicateCheck.rows[0].check_in_time);
-      return res.status(409).json({ 
+      const firstCheckIn = duplicateCheck.rows[0].check_in_time;
+      return res.status(400).json({ 
         success: false, 
-        message: `Already checked in today at ${firstCheckin.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}`,
-        status: 'DUPLICATE'
+        status: 'DUPLICATE',
+        message: 'Already checked in today',
+        firstCheckInTime: firstCheckIn
       });
     }
 
     // Record attendance
-    const attendanceResult = await client.query(
-      `INSERT INTO attendance_logs (member_id, subscription_id, gym_qr_id, check_in_date, scan_method)
-       VALUES ($1, $2, $3, $4, 'qr')
-       RETURNING *`,
-      [memberId, memberData.subscription_id, gymQRResult.rows[0].id, todayStr]
+    await pool.query(
+      `INSERT INTO attendance_logs (
+        member_id, subscription_id, gym_qr_id, gym_id, 
+        check_in_time, check_in_date, scan_method
+      )
+      VALUES ($1, $2, $3, $4, NOW(), CURRENT_DATE, 'qr')`,
+      [member_id, subscription.id, gymQR.id, gym_id]
     );
 
-    await client.query('COMMIT');
-
     // Calculate days remaining
-    const daysRemaining = Math.ceil((endDate - today) / (1000 * 60 * 60 * 24));
+    const endDate = new Date(subscription.end_date);
+    const todayDate = new Date();
+    const daysRemaining = Math.ceil((endDate - todayDate) / (1000 * 60 * 60 * 24));
 
     res.json({
       success: true,
       status: 'SUCCESS',
-      message: `Welcome, ${memberData.name}! Check-in recorded.`,
-      attendance: attendanceResult.rows[0],
+      message: 'Check-in successful!',
       member: {
-        name: memberData.name,
-        plan_name: memberData.plan_name,
-        end_date: memberData.end_date,
+        name: memberResult.rows[0].name,
+        plan_name: subscription.plan_name,
+        end_date: subscription.end_date,
         days_remaining: daysRemaining
       }
     });
+
   } catch (err) {
-    await client.query('ROLLBACK');
-    console.error('Scan gym QR error:', err);
-    res.status(500).json({ success: false, message: 'Server error during scan' });
-  } finally {
-    client.release();
+    console.error('Check-in error:', err);
+    res.status(500).json({ 
+      success: false, 
+      status: 'ERROR',
+      message: 'Server error during check-in' 
+    });
   }
 };
 
-// Manual attendance record (admin)
-const recordManualAttendance = async (req, res) => {
+// Manual check-in (admin/staff with permission)
+const manualCheckIn = async (req, res) => {
   try {
-    const { member_id, notes, date } = req.body;
+    const { member_id } = req.body;
+    const gym_id = req.user.gym_id;
 
-    if (!member_id) {
-      return res.status(400).json({ success: false, message: 'Member ID is required' });
+    // Verify member belongs to this gym
+    const memberResult = await pool.query(
+      'SELECT * FROM members WHERE id = $1 AND gym_id = $2 AND is_active = true',
+      [member_id, gym_id]
+    );
+
+    if (memberResult.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Member not found in this gym' });
     }
 
-    const checkDate = date || new Date().toISOString().split('T')[0];
+    // Check subscription
+    const subResult = await pool.query(
+      `SELECT s.* FROM subscriptions s
+       WHERE s.member_id = $1 AND s.gym_id = $2
+         AND s.status = 'active' AND s.end_date >= CURRENT_DATE
+       LIMIT 1`,
+      [member_id, gym_id]
+    );
+
+    if (subResult.rows.length === 0) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Member has no active subscription' 
+      });
+    }
 
     // Check duplicate
-    const duplicate = await pool.query(
-      'SELECT id FROM attendance_logs WHERE member_id = $1 AND check_in_date = $2',
-      [member_id, checkDate]
+    const today = new Date().toISOString().split('T')[0];
+    const duplicateCheck = await pool.query(
+      `SELECT * FROM attendance_logs 
+       WHERE member_id = $1 AND gym_id = $2 AND check_in_date = $3`,
+      [member_id, gym_id, today]
     );
 
-    if (duplicate.rows.length > 0) {
-      return res.status(409).json({ success: false, message: 'Attendance already recorded for this date' });
+    if (duplicateCheck.rows.length > 0) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Member already checked in today' 
+      });
     }
 
-    // Get active subscription
-    const sub = await pool.query(
-      "SELECT id FROM subscriptions WHERE member_id = $1 AND status = 'active' AND end_date >= $2",
-      [member_id, checkDate]
+    // Record attendance
+    await pool.query(
+      `INSERT INTO attendance_logs (
+        member_id, subscription_id, gym_id, 
+        check_in_time, check_in_date, scan_method
+      )
+      VALUES ($1, $2, $3, NOW(), CURRENT_DATE, 'manual')`,
+      [member_id, subResult.rows[0].id, gym_id]
     );
 
-    const result = await pool.query(
-      `INSERT INTO attendance_logs (member_id, subscription_id, check_in_date, scan_method, notes)
-       VALUES ($1, $2, $3, 'manual', $4) RETURNING *`,
-      [member_id, sub.rows[0]?.id || null, checkDate, notes]
-    );
+    res.json({ 
+      success: true, 
+      message: 'Manual check-in recorded',
+      member: memberResult.rows[0]
+    });
 
-    res.status(201).json({ success: true, attendance: result.rows[0] });
   } catch (err) {
-    console.error('Manual attendance error:', err);
+    console.error('Manual check-in error:', err);
     res.status(500).json({ success: false, message: 'Server error' });
   }
 };
 
-// Get attendance logs (admin - all, member - own)
+// Get attendance logs (admin/staff with permission)
 const getAttendanceLogs = async (req, res) => {
   try {
-    const { member_id, date_from, date_to, page = 1, limit = 50 } = req.query;
+    const { date, member_id, page = 1, limit = 50 } = req.query;
     const offset = (page - 1) * limit;
+    const gym_id = req.user.gym_id;
 
     let query = `
-      SELECT al.*, m.name, m.email, p.name as plan_name
+      SELECT al.*, m.name as member_name, m.email as member_email
       FROM attendance_logs al
       JOIN members m ON m.id = al.member_id
-      LEFT JOIN subscriptions s ON s.id = al.subscription_id
-      LEFT JOIN membership_plans p ON p.id = s.plan_id
-      WHERE 1=1
+      WHERE al.gym_id = $1
     `;
-    const params = [];
-    let paramCount = 1;
+    
+    const params = [gym_id];
+    let paramCount = 2;
 
-    // Members can only see their own attendance
-    if (req.user.role !== 'admin') {
-      query += ` AND al.member_id = $${paramCount}`;
-      params.push(req.user.id);
+    if (date) {
+      query += ` AND al.check_in_date = $${paramCount}`;
+      params.push(date);
       paramCount++;
-    } else if (member_id) {
+    }
+
+    if (member_id) {
       query += ` AND al.member_id = $${paramCount}`;
       params.push(member_id);
-      paramCount++;
-    }
-
-    if (date_from) {
-      query += ` AND al.check_in_date >= $${paramCount}`;
-      params.push(date_from);
-      paramCount++;
-    }
-
-    if (date_to) {
-      query += ` AND al.check_in_date <= $${paramCount}`;
-      params.push(date_to);
       paramCount++;
     }
 
@@ -226,24 +217,26 @@ const getAttendanceLogs = async (req, res) => {
 
     const result = await pool.query(query, params);
 
-    // Count
-    let countQuery = 'SELECT COUNT(*) FROM attendance_logs al WHERE 1=1';
-    const countParams = [];
-    if (req.user.role !== 'admin') {
-      countQuery += ' AND al.member_id = $1';
-      countParams.push(req.user.id);
-    }
+    // Count total
+    let countQuery = `SELECT COUNT(*) FROM attendance_logs WHERE gym_id = $1`;
+    const countParams = [gym_id];
+    
     const countResult = await pool.query(countQuery, countParams);
+    const total = parseInt(countResult.rows[0].count);
 
     res.json({
       success: true,
       logs: result.rows,
-      pagination: { total: parseInt(countResult.rows[0].count), page: parseInt(page), limit: parseInt(limit) }
+      pagination: { total, page: parseInt(page), limit: parseInt(limit), pages: Math.ceil(total / limit) }
     });
   } catch (err) {
-    console.error('Get attendance error:', err);
+    console.error('Get attendance logs error:', err);
     res.status(500).json({ success: false, message: 'Server error' });
   }
 };
 
-module.exports = { scanGymQR, recordManualAttendance, getAttendanceLogs };
+module.exports = { 
+  scanGymQR, 
+  manualCheckIn, 
+  getAttendanceLogs 
+};

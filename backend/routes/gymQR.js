@@ -3,10 +3,14 @@ const router = express.Router();
 const { getGymQR, regenerateGymQR } = require('../controllers/gymQRController');
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
 
-// Get gym QR code (admin only)
-router.get('/', authenticateToken, requireAdmin, getGymQR);
+// All routes require admin authentication
+router.use(authenticateToken);
+router.use(requireAdmin);
 
-// Regenerate gym QR code (admin only)
-router.post('/regenerate', authenticateToken, requireAdmin, regenerateGymQR);
+// Get gym QR code
+router.get('/', getGymQR);
+
+// Regenerate gym QR code
+router.post('/regenerate', regenerateGymQR);
 
 module.exports = router;
