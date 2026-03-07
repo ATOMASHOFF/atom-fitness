@@ -5,6 +5,7 @@ const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
+  const [permissions, setPermissions] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const loadUser = useCallback(async () => {
@@ -16,10 +17,15 @@ export const AuthProvider = ({ children }) => {
     try {
       const res = await api.get('/auth/me');
       setUser(res.data.user);
+      // If staff, permissions come from user data
+      if (res.data.user.role === 'staff' && res.data.user.permissions) {
+        setPermissions(res.data.user.permissions);
+      }
     } catch {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
       setUser(null);
+      setPermissions(null);
     } finally {
       setLoading(false);
     }
@@ -30,39 +36,57 @@ export const AuthProvider = ({ children }) => {
   }, [loadUser]);
 
   const login = async (email, password) => {
-    console.log('=== LOGIN ATTEMPT ===');
-    console.log('Email:', email);
-    console.log('API Base URL:', api.defaults.baseURL);
-    console.log('Environment variable:', process.env.REACT_APP_API_URL);
-
-    try {
-      const res = await api.post('/auth/login', { email, password });
-      console.log('✅ Login SUCCESS:', res.data);
-
-      const { token, user: userData } = res.data;
-      localStorage.setItem('token', token);
-      localStorage.setItem('user', JSON.stringify(userData));
-      setUser(userData);
-      return userData;
-    } catch (error) {
-      console.error('❌ LOGIN ERROR');
-      console.error('Error message:', error.message);
-      console.error('Response status:', error.response?.status);
-      console.error('Response data:', error.response?.data);
-      throw error;
+    const res = await api.post('/auth/login', { email, password });
+    const { token, user: userData } = res.data;
+    
+    localStorage.setItem('token', token);
+    localStorage.setItem('user', JSON.stringify(userData));
+    
+    setUser(userData);
+    
+    // Store permissions if staff
+    if (userData.permissions) {
+      setPermissions(userData.permissions);
     }
+    
+    return userData;
   };
 
   const logout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     setUser(null);
+    setPermissions(null);
   };
 
   const refreshUser = () => loadUser();
 
+  // Permission checker
+  const hasPermission = (permission) => {
+    // Admin has all permissions
+    if (user?.role === 'admin') return true;
+    
+    // Staff - check specific permission
+    if (user?.role === 'staff' && permissions) {
+      return permissions[permission] === true;
+    }
+    
+    return false;
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, refreshUser, isAdmin: user?.role === 'admin' }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      permissions,
+      loading, 
+      login, 
+      logout, 
+      refreshUser, 
+      hasPermission,
+      isAdmin: user?.role === 'admin',
+      isStaff: user?.role === 'staff',
+      isMember: user?.role === 'member'
+    }}>
       {children}
     </AuthContext.Provider>
   );
