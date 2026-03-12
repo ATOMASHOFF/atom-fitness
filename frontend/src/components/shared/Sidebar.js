@@ -4,7 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { toast } from 'react-toastify';
 
 const Sidebar = () => {
-  const { user, logout, hasPermission } = useAuth();
+  const { user, logout, hasPermission, isAdmin, isStaff, isMember } = useAuth();
   const navigate = useNavigate();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -21,16 +21,16 @@ const Sidebar = () => {
   // Admin navigation
   const adminNav = [
     { path: '/admin', label: '📊 Dashboard', end: true },
+    { path: '/admin/pending', label: '📋 Pending Approvals' },
     { path: '/admin/members', label: '👥 Members' },
-    { path: '/admin/staff', label: '👔 Staff', adminOnly: true },
+    { path: '/admin/staff', label: '👔 Staff' },
     { path: '/admin/subscriptions', label: '💳 Subscriptions' },
     { path: '/admin/plans', label: '📋 Plans' },
     { path: '/admin/attendance', label: '📅 Attendance' },
     { path: '/admin/gym-qr', label: '🎯 Gym QR Code' },
-    { path: '/admin/settings', label: '⚙️ Gym Settings', adminOnly: true },
   ];
 
-  // Staff navigation - based on permissions
+  // Staff navigation
   const staffNav = [
     { path: '/staff', label: '📊 Dashboard', end: true },
     { 
@@ -65,17 +65,16 @@ const Sidebar = () => {
 
   // Select nav items based on role
   let navItems = [];
-  if (user?.role === 'admin') {
+  if (isAdmin) {
     navItems = adminNav;
-  } else if (user?.role === 'staff') {
+  } else if (isStaff) {
     navItems = staffNav.filter(item => item.show !== false);
-  } else {
+  } else if (isMember) {
     navItems = memberNav;
   }
 
   return (
     <>
-      {/* Mobile Menu Button */}
       <button
         className="mobile-menu-btn"
         onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -84,7 +83,6 @@ const Sidebar = () => {
         {isMobileMenuOpen ? '✕' : '☰'}
       </button>
 
-      {/* Overlay */}
       {isMobileMenuOpen && (
         <div 
           className="mobile-overlay"
@@ -92,7 +90,6 @@ const Sidebar = () => {
         />
       )}
 
-      {/* Sidebar */}
       <aside className={`sidebar ${isMobileMenuOpen ? 'sidebar-open' : ''}`}>
         <div className="sidebar-header">
           <div className="sidebar-logo">⚡ ATOM</div>
@@ -115,11 +112,11 @@ const Sidebar = () => {
 
         <div className="sidebar-footer">
           <div className="sidebar-user">
-            <div className="sidebar-user-name">{user?.name}</div>
+            <div className="sidebar-user-name">{user?.name || 'User'}</div>
             <div className="sidebar-user-role">
-              {user?.role === 'admin' && '👑 Admin'}
-              {user?.role === 'staff' && '👔 Staff'}
-              {user?.role === 'member' && '👤 Member'}
+              {isAdmin && '👑 Admin'}
+              {isStaff && '👔 Staff'}
+              {isMember && '👤 Member'}
             </div>
           </div>
           <button className="btn-logout" onClick={handleLogout}>
