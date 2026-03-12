@@ -1,116 +1,154 @@
-# ⚡ ATOM FITNESS — Gym Management System
+# Gym Management SaaS MVP
 
-**NEW: Members scan gym's QR code to check in** (much more practical!)
+A simple and scalable **Gym Management SaaS application** built to help gym owners manage members, track attendance through QR scanning, and monitor memberships.
 
-A complete, locally-hosted gym management web application with **reversed QR attendance** - the gym displays one QR code, members scan it with their phones.
-
----
-
-## 🎯 How The New System Works
-
-### Old System (Complicated):
-- ❌ Each member had their own QR code
-- ❌ Admin needed to scan every member at entrance
-- ❌ Required webcam at reception
-
-### New System (Better!):
-- ✅ **Gym has ONE QR code** displayed at entrance
-- ✅ **Members scan it with their phones** to check in
-- ✅ Instant validation & attendance logging
-- ✅ No admin scanning needed!
+This MVP is designed to work for a **single gym initially but supports multi-gym architecture**, allowing the system to scale to thousands of gyms in the future.
 
 ---
 
-## 🚀 Quick Start
+## Features
 
-Same setup process, with database schema update:
+### Authentication
 
-**1. Create database:**
-```bash
-psql -U postgres -c "CREATE DATABASE atom_fitness;"
-psql -U postgres -d atom_fitness -f atom-fitness/backend/config/schema.sql
-```
+* Secure login using Supabase Auth
+* Role-based access: **Admin** and **Member**
 
-**2. Configure backend:**
-```bash
-cd atom-fitness/backend
-cp .env.example .env
-# Edit .env → set your DB_PASSWORD
-```
+### Admin Features
 
-**3. Install & start backend:**
-```bash
-npm install
-npm run seed
-npm start
-```
+* Add and manage gym members
+* View members list
+* Track membership expiry
+* View today's attendance
+* Dashboard with basic statistics
 
-**4. Install & start frontend:**
-```bash
-cd atom-fitness/frontend
-npm install
-npm start
-```
+### Member Features
 
-**5. Login:** `admin@atomfitness.com` / `Admin@123`
+* View membership status
+* See membership expiry date
+* Scan QR code to mark attendance
+* View attendance history
+
+### QR Attendance System
+
+* Each gym has a **universal QR code**
+* Members scan the QR to mark their check-in
+* Attendance can be marked **once per day**
 
 ---
 
-## 📱 New Workflow
+## Tech Stack
 
-### Admin Setup (One-Time):
+Frontend
 
-1. **Login as admin**
-2. Go to **Attendance → Gym QR Code**
-3. **Download/Print** the gym's QR code
-4. **Display it** at gym entrance
-5. Done!
+* Next.js
+* TypeScript
+* Tailwind CSS
 
-### Member Check-In (Daily):
+Backend
 
-1. **Login to member app** on phone
-2. Tap **"Check In"**
-3. **Scan the gym's QR code** at entrance
-4. ✅ Instant confirmation!
+* Supabase (PostgreSQL database, authentication, API)
 
----
+Hosting
 
-## 🔄 Updating From Old Version
-
-If you already have the old system:
-
-```bash
-psql -U postgres -d atom_fitness
-
-CREATE TABLE IF NOT EXISTS gym_qr_codes (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    token VARCHAR(255) UNIQUE NOT NULL,
-    qr_image_data TEXT NOT NULL,
-    location VARCHAR(100) DEFAULT 'Main Entrance',
-    is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
-ALTER TABLE attendance_logs ADD COLUMN IF NOT EXISTS gym_qr_id UUID REFERENCES gym_qr_codes(id) ON DELETE SET NULL;
-
-\q
-```
-
-Then replace code files and restart servers.
+* Vercel (Frontend)
+* Supabase (Backend)
 
 ---
 
-## 🎯 Benefits
+## Project Structure
 
-| Old System | New System |
-|-----------|------------|
-| Complex setup | Simple |
-| Webcam required | Member's phone |
-| Admin scans each | Self-service |
-| Bottleneck at entrance | No bottleneck |
-| One QR per member | One QR for gym |
+/app
+/components
+/lib
+/pages
+/styles
 
 ---
 
-Built for ATOM FITNESS • Production-Ready
+## Database Tables
+
+### gyms
+
+Stores gym information.
+
+Fields:
+
+* id
+* gym_name
+* owner_name
+* email
+* phone
+* created_at
+
+### members
+
+Stores member information.
+
+Fields:
+
+* id
+* gym_id
+* name
+* phone
+* email
+* membership_start_date
+* membership_end_date
+* membership_status
+* created_at
+
+### attendance
+
+Stores attendance records.
+
+Fields:
+
+* id
+* gym_id
+* member_id
+* check_in_time
+* date
+
+---
+
+## Core Workflow
+
+1. Admin creates gym account
+2. Admin adds members
+3. Gym displays universal QR code
+4. Member logs in and scans QR
+5. Attendance is recorded in database
+6. Admin dashboard shows attendance data
+
+---
+
+## Security
+
+Supabase Row Level Security ensures:
+
+* Admins access only their gym data
+* Members access only their own data
+
+---
+
+## Future Features
+
+Planned upgrades:
+
+* Payment integration
+* Membership renewal reminders
+* Trainer management
+* Gym revenue analytics
+* Multi-gym SaaS dashboard
+* Mobile app
+
+---
+
+## Goal
+
+The goal of this project is to create a **lightweight MVP that solves real gym management problems while remaining scalable for SaaS growth.**
+
+---
+
+## License
+
+MIT License
